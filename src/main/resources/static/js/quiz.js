@@ -31,6 +31,7 @@ $(document).ready(function() {
                     currentQuestion = typeof response === 'string' ? JSON.parse(response) : response;
                     displayQuestion(currentQuestion);
                     $('#questionContainer').removeClass('d-none');
+                    $('#fallbackIndicator').remove(); // Remove fallback indicator if present
                 } catch (e) {
                     console.error('Error parsing question:', e);
                     alert('Error generating question. Please try again.');
@@ -50,16 +51,26 @@ $(document).ready(function() {
     function displayQuestion(question) {
         $('#questionText').text(question.questionText);
         const $optionsList = $('#optionsList').empty();
-        
+
         question.options.forEach((option, index) => {
             const $option = $(`
-                <button type="button" class="list-group-item list-group-item-action option" 
+                <button type="button" class="list-group-item list-group-item-action option"
                         data-index="${index}">
                     ${String.fromCharCode(65 + index)}. ${option}
                 </button>
             `);
             $optionsList.append($option);
         });
+
+        // Show fallback indicator if this is a fallback question
+        if (question.isFallback) {
+            const $indicator = $(`
+                <div id="fallbackIndicator" class="alert alert-warning mt-2" role="alert">
+                    <small><i class="fas fa-exclamation-triangle"></i> This is a sample question. API integration may not be working properly.</small>
+                </div>
+            `);
+            $('#questionContainer').prepend($indicator);
+        }
 
         // Reset UI
         $('#feedback').empty().removeClass('alert-success alert-danger');

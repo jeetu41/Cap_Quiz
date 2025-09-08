@@ -22,10 +22,14 @@ public class GeminiService {
     @Value("${GEMINI_API_KEY}")
     private String apiKey;
 
-    private static final String GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent";
+    private static final String GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
     
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    public boolean isApiKeyConfigured() {
+        return apiKey != null && !apiKey.trim().isEmpty();
+    }
 
     public String generateQuizQuestion(String subject, String topic, String difficulty) {
         try {
@@ -175,13 +179,14 @@ public class GeminiService {
                 "questionText": "What is a key concept in %s?",
                 "options": [
                     "Concept A related to %s",
-                    "Concept B related to %s", 
+                    "Concept B related to %s",
                     "Concept C related to %s",
                     "Concept D related to %s"
                 ],
                 "correctAnswerIndex": 0,
                 "subject": "%s",
-                "difficulty": "%s"
+                "difficulty": "%s",
+                "isFallback": true
             }
             """, subject, subject, subject, subject, subject, subject, difficulty);
     }
