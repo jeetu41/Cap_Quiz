@@ -10,7 +10,7 @@ import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 
 @Controller
-@RequestMapping("/quiz")
+@RequestMapping("")
 public class QuizController {
 
     @Autowired
@@ -20,6 +20,11 @@ public class QuizController {
     private GeminiService geminiService;
 
     @GetMapping("/")
+    public String redirectToQuiz() {
+        return "redirect:/quiz";
+    }
+
+    @GetMapping("/quiz")
     public String showQuizPage(Model model) {
         model.addAttribute("subjects", new String[]{"OS", "CN", "DSA", "Cloud", "Communication", "Pseudocode"});
         model.addAttribute("difficulties", new String[]{"Easy", "Medium", "Hard"});

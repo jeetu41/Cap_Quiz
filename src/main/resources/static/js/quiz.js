@@ -19,7 +19,7 @@ $(document).ready(function() {
 
         // Call the backend to generate a question
         $.ajax({
-            url: '/quiz/generate',
+            url: '/generate',
             method: 'POST',
             data: {
                 subject: subject,
