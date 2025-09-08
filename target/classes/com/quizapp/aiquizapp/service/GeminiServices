@@ -1,0 +1,115 @@
+package com.quizapp.aiquizapp.service;
+
+import com.google.cloud.aiplatform.v1beta1.EndpointName;
+import com.google.cloud.aiplatform.v1beta1.PredictRequest;
+import com.google.cloud.aiplatform.v1beta1.PredictResponse;
+import com.google.cloud.aiplatform.v1beta1.PredictionServiceClient;
+import com.google.cloud.aiplatform.v1beta1.PredictionServiceSettings;
+import com.google.protobuf.ListValue;
+import com.google.protobuf.Struct;
+import com.google.protobuf.Value;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.util.List;
+
+@Slf4j
+@Service
+public class GeminiService {
+
+    @Value("${GCP_PROJECT_ID:your-project-id}")
+    private String projectId;
+
+    @Value("${GCP_LOCATION:us-central1}")
+    private String location;
+
+    @Value("${GEMINI_API_ENDPOINT:us-central1-aiplatform.googleapis.com:443}")
+    private String apiEndpoint;
+
+    @Value("${GEMINI_MODEL:gemini-pro}")
+    private String modelName;
+
+    public String generateQuizQuestion(String subject, String topic, String difficulty) {
+        try {
+            String prompt = String.format("""
+                Generate a multiple-choice question about %s - %s with difficulty level: %s.
+                Format the response as a valid JSON object with the following structure:
+                {
+                    "questionText": "The question text",
+                    "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
+                    "correctAnswerIndex": 0,
+                    "subject": "%s",
+                    "difficulty": "%s"
+                }
+                """, subject, topic, difficulty, subject, difficulty);
+
+            String response = predictTextPrompt(prompt);
+            log.info("Generated question: {}", response);
+            return response;
+        } catch (Exception e) {
+            log.error("Error generating quiz question: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to generate quiz question", e);
+        }
+    }
+
+    private String predictTextPrompt(String prompt) throws IOException {
+        try (PredictionServiceClient client = PredictionServiceClient.create(
+                PredictionServiceSettings.newBuilder()
+                        .setEndpoint(apiEndpoint)
+                        .build())) {
+
+            EndpointName endpoint = EndpointName.ofProjectLocationPublisherModelName(
+                    projectId, location, "google", modelName);
+
+            // Build the instance content
+            Struct content = Struct.newBuilder()
+                    .putFields("role", Value.newBuilder().setStringValue("user").build())
+                    .putFields("parts", Value.newBuilder()
+                            .setListValue(ListValue.newBuilder()
+                                    .addValues(Value.newBuilder()
+                                            .setStructValue(Struct.newBuilder()
+                                                    .putFields("text", Value.newBuilder().setStringValue(prompt).build())
+                                                    .build())
+                                            .build())
+                                    .build())
+                            .build())
+                    .build();
+
+            Struct instance = Struct.newBuilder()
+                    .putFields("contents", Value.newBuilder()
+                            .setListValue(ListValue.newBuilder()
+                                    .addValues(Value.newBuilder().setStructValue(content).build())
+                                    .build())
+                            .build())
+                    .build();
+
+            // Generation config
+            Struct generationConfig = Struct.newBuilder()
+                    .putFields("temperature", Value.newBuilder().setNumberValue(0.7).build())
+                    .putFields("topP", Value.newBuilder().setNumberValue(1.0).build())
+                    .putFields("maxOutputTokens", Value.newBuilder().setNumberValue(1024).build())
+                    .build();
+
+            Struct parameters = Struct.newBuilder()
+                    .putFields("generationConfig", Value.newBuilder().setStructValue(generationConfig).build())
+                    .build();
+
+            PredictRequest request = PredictRequest.newBuilder()
+                    .setEndpoint(endpoint.toString())
+                    .addAllInstances(List.of(Value.newBuilder().setStructValue(instance).build()))
+                    .setParameters(Value.newBuilder().setStructValue(parameters).build())
+                    .build();
+
+            PredictResponse response = client.predict(request);
+
+            if (response.getPredictionsCount() > 0) {
+                Value prediction = response.getPredictions(0);
+                return prediction.getStructValue().getFieldsOrThrow("content").getStringValue();
+            }
+
+            throw new RuntimeException("No predictions returned from the model");
+        }
+    }
+}
