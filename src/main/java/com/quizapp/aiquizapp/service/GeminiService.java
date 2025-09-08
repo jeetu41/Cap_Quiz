@@ -14,6 +14,8 @@ import org.springframework.web.client.RestTemplate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Service
@@ -27,47 +29,78 @@ public class GeminiService {
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    // Cache to store recent question texts to prevent duplicates
+    private final Set<String> questionCache = ConcurrentHashMap.newKeySet();
+    private static final int MAX_CACHE_SIZE = 100;
+
     public boolean isApiKeyConfigured() {
         return apiKey != null && !apiKey.trim().isEmpty();
     }
 
     public String generateQuizQuestion(String subject, String topic, String difficulty) {
-        try {
-            // Validate inputs
-            if (apiKey == null || apiKey.trim().isEmpty()) {
-                throw new RuntimeException("GEMINI_API_KEY is not configured");
-            }
-
-            String prompt = String.format("""
-                Generate a multiple-choice question about %s - %s with difficulty level: %s.
-                
-                IMPORTANT: Respond with ONLY a valid JSON object in this exact format:
-                {
-                    "questionText": "The question text here",
-                    "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
-                    "correctAnswerIndex": 0,
-                    "subject": "%s",
-                    "difficulty": "%s"
+        int maxRetries = 3;
+        for (int attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+                // Validate inputs
+                if (apiKey == null || apiKey.trim().isEmpty()) {
+                    throw new RuntimeException("GEMINI_API_KEY is not configured");
                 }
-                
-                Make sure the correctAnswerIndex is a number (0-3) corresponding to the correct option.
-                Do not include any text before or after the JSON.
-                """, subject, topic, difficulty, subject, difficulty);
 
-            String response = callGeminiAPI(prompt);
-            
-            // Validate the JSON response
-            validateQuestionResponse(response);
-            
-            log.info("Generated question successfully for subject: {}, topic: {}, difficulty: {}", 
-                    subject, topic, difficulty);
-            return response;
-            
-        } catch (Exception e) {
-            log.error("Error generating quiz question: {}", e.getMessage(), e);
-            // Return a fallback question instead of throwing exception
-            return createFallbackQuestion(subject, difficulty);
+                String prompt = String.format("""
+                    Generate a multiple-choice question about %s - %s with difficulty level: %s.
+
+                    IMPORTANT: Respond with ONLY a valid JSON object in this exact format:
+                    {
+                        "questionText": "The question text here",
+                        "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
+                        "correctAnswerIndex": 0,
+                        "subject": "%s",
+                        "difficulty": "%s"
+                    }
+
+                    Make sure the correctAnswerIndex is a number (0-3) corresponding to the correct option.
+                    Do not include any text before or after the JSON.
+                    """, subject, topic, difficulty, subject, difficulty);
+
+                String response = callGeminiAPI(prompt);
+
+                // Validate the JSON response
+                validateQuestionResponse(response);
+
+                // Check for duplicate question
+                JsonNode questionJson = objectMapper.readTree(response);
+                String questionText = questionJson.get("questionText").asText();
+
+                if (questionCache.contains(questionText)) {
+                    log.warn("Duplicate question detected, retrying... (attempt {}/{})", attempt + 1, maxRetries);
+                    continue; // Retry
+                }
+
+                // Add to cache and manage cache size
+                questionCache.add(questionText);
+                if (questionCache.size() > MAX_CACHE_SIZE) {
+                    // Remove oldest entry (simple approach: clear and rebuild, or use LinkedHashSet)
+                    // For simplicity, we'll just clear if it exceeds
+                    questionCache.clear();
+                    questionCache.add(questionText);
+                }
+
+                log.info("Generated unique question successfully for subject: {}, topic: {}, difficulty: {}",
+                        subject, topic, difficulty);
+                return response;
+
+            } catch (Exception e) {
+                log.error("Error generating quiz question (attempt {}/{}): {}", attempt + 1, maxRetries, e.getMessage(), e);
+                if (attempt == maxRetries - 1) {
+                    // Last attempt, return fallback
+                    String fallback = createFallbackQuestion(subject, difficulty);
+                    log.info("Returning fallback question after {} failed attempts", maxRetries);
+                    return fallback;
+                }
+            }
         }
+        // This should not be reached, but just in case
+        return createFallbackQuestion(subject, difficulty);
     }
 
     private String callGeminiAPI(String prompt) {
