@@ -8,22 +8,10 @@ services:
       - key: SPRING_PROFILES_ACTIVE
         value: production
       - key: GEMINI_API_KEY
-        fromService:
-          type: env
-          name: GEMINI_API_KEY
-          property: value
-      - key: GCP_PROJECT_ID
-        fromService:
-          type: env
-          name: GCP_PROJECT_ID
-          property: value
-      - key: GCP_LOCATION
-        value: us-central1
-      - key: GEMINI_API_ENDPOINT
-        value: us-central1-aiplatform.googleapis.com:443
-      - key: GEMINI_MODEL
-        value: gemini-pro
+        sync: false  # Set this manually in Render dashboard
     plan: free
     numInstances: 1
     healthCheckPath: /quiz/
     autoDeploy: true
+    buildCommand: mvn clean package -DskipTests
+    startCommand: java -jar target/ai-quiz-app-0.0.1-SNAPSHOT.jar
