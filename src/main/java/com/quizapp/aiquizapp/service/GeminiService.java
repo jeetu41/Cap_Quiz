@@ -5,7 +5,6 @@ import com.google.cloud.aiplatform.v1beta1.PredictRequest;
 import com.google.cloud.aiplatform.v1beta1.PredictResponse;
 import com.google.cloud.aiplatform.v1beta1.PredictionServiceClient;
 import com.google.cloud.aiplatform.v1beta1.PredictionServiceSettings;
-import com.google.protobuf.Value;
 import com.google.protobuf.util.JsonFormat;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -83,15 +82,21 @@ public class GeminiService {
             parameters.put("generationConfig", generationConfig);
 
             // Convert to protobuf Value
-            Value.Builder instanceValue = Value.newBuilder();
-            JsonFormat.parser().merge(JsonFormat.printer().print(Value.newBuilder()
-                    .putAllFields(instance).build()), instanceValue);
+            com.google.protobuf.Value.Builder instanceValue = com.google.protobuf.Value.newBuilder();
+            JsonFormat.parser().merge(JsonFormat.printer().print(
+                    com.google.protobuf.Value.newBuilder().putAllFields(instance).build()
+            ), instanceValue);
 
-            List<Value> instances = new ArrayList<>();
+            List<com.google.protobuf.Value> instances = new ArrayList<>();
             instances.add(instanceValue.build());
 
-            Value parameterValue = Value.newBuilder()
-                    .putAllFields(Value.newBuilder().putAllFields(parameters).build().getFieldsMap())
+            com.google.protobuf.Value parameterValue = com.google.protobuf.Value.newBuilder()
+                    .putAllFields(
+                            com.google.protobuf.Value.newBuilder()
+                                    .putAllFields(parameters)
+                                    .build()
+                                    .getFieldsMap()
+                    )
                     .build();
 
             // Create the prediction request
@@ -103,13 +108,13 @@ public class GeminiService {
 
             // Get the prediction
             PredictResponse predictResponse = predictionServiceClient.predict(predictRequest);
-            
+
             // Extract and return the generated text
             if (predictResponse.getPredictionsCount() > 0) {
-                Value prediction = predictResponse.getPredictions(0);
+                com.google.protobuf.Value prediction = predictResponse.getPredictions(0);
                 return prediction.getStructValue().getFieldsOrThrow("content").getStringValue();
             }
-            
+
             throw new RuntimeException("No predictions returned from the model");
         }
     }
